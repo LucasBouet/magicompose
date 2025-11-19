@@ -86,3 +86,7 @@ class App:
                     "restart": "Defines the restart policy for the service. (no, always, on-failure, unless-stopped)"
                 }
                 return help_texts.get(key, "No help available for this setting.")
+    
+            
+    
+    def loop(self)
