@@ -21,7 +21,7 @@ class App:
                     "environment": {},
                     "depends_on": [],
                     "command": "",
-                    "networks": [],
+                    "networks": {},
                     "restart": "no"
                 }
                 self.file = file
@@ -41,12 +41,18 @@ class App:
             def set_setting(self, key, value):
                 """Set a specific setting for the service."""
                 if key in self.service_details:
-                    if isinstance(self.service_details[key], list):
-                        self.service_details[key].append(value)
-                    elif isinstance(self.service_details[key], dict):
-                        k, v = value.split('=', 1)
-                        self.service_details[key][k] = v
-                    print(f"Setting {key} updated to {self.service_details[key]}")
+                    if key == "networks":
+                        network, test, ip = value.strip().split(':')
+                        self.service_details[key][network] = {
+                            "ipv4_address": ip,
+                        }
+                    else: 
+                        if isinstance(self.service_details[key], list):
+                            self.service_details[key].append(value)
+                        elif isinstance(self.service_details[key], dict):
+                            k, v = value.split('=', 1)
+                            self.service_details[key][k] = v
+                        print(f"Setting {key} updated to {self.service_details[key]}")
                 else:
                     print(f"Setting {key} does not exists currently.")
 
@@ -66,3 +72,17 @@ class App:
                         else:
                             self.service += f"    {key}: {value}\n"
                 return self.service
+
+            def help(self, key):
+                """Provide help information for a specific setting."""
+                help_texts = {
+                    "image": "Specifies the Docker image to use for the service. ('$name')",
+                    "ports": "Maps ports from the host to the container. ($YourPort:$ContainerPort)",
+                    "volumes": "Mounts host paths or named volumes into the container. ($Host_path:$ContainerPath)",
+                    "environment": "Sets environment variables for the service. ($KEY=$VALUE)",
+                    "depends_on": "Specifies dependencies between services. ($ServiceName)",
+                    "command": "Overrides the default command for the container. ($CommandToRun)",
+                    "networks": "Configures custom networks for the service. ($NetworkName:setIp:$IP)",
+                    "restart": "Defines the restart policy for the service. (no, always, on-failure, unless-stopped)"
+                }
+                return help_texts.get(key, "No help available for this setting.")
