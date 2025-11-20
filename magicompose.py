@@ -1,5 +1,3 @@
-# GitHub Copilot
-
 from pathlib import Path
 
 class App:
