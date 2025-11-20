@@ -18,6 +18,7 @@ class App:
                 self.name = name
                 self.service_details = {
                     "image": "auto",
+                    "container_name": "",   # new: allow explicit container_name
                     "ports": [],
                     "volumes": [],
                     "environment": {},  # dict
@@ -32,6 +33,25 @@ class App:
                 image = input(f"Image for '{self.name}' (default '{self.service_details['image']}'): ").strip()
                 if image:
                     self.service_details["image"] = image
+
+                # new: custom container name
+                cname = input("Container name (leave blank to skip): ").strip()
+                if cname:
+                    self.service_details["container_name"] = cname
+
+                # If image appears to be MySQL, offer quick MySQL env setup
+                if "mysql" in self.service_details["image"].lower():
+                    print("Detected MySQL image. Optionally set MySQL environment variables (leave blank to skip each).")
+                    mysql_defaults = {
+                        "MYSQL_ROOT_PASSWORD": "rootpassword",
+                        "MYSQL_DATABASE": "demo",
+                        "MYSQL_USER": "user",
+                        "MYSQL_PASSWORD": "password"
+                    }
+                    for k, suggested in mysql_defaults.items():
+                        v = input(f"{k} (suggested '{suggested}'): ").strip()
+                        if v:
+                            self.service_details["environment"][k] = v
 
                 # Ports
                 print("Enter port mappings (host:container). Leave blank to finish.")
@@ -115,6 +135,9 @@ class App:
 
             def export_to_docker_format(self):
                 s = f"  {self.name}:\n"
+                # container_name if provided
+                if self.service_details.get("container_name"):
+                    s += f"    container_name: {self.service_details['container_name']}\n"
                 # image first
                 if self.service_details.get("image"):
                     s += f"    image: {self.service_details['image']}\n"
