@@ -23,7 +23,7 @@ class App:
                     "environment": {},  # dict
                     "depends_on": [],
                     "command": "",
-                    "networks": [],  # list of network names
+                    "networks": {},  # dict: network_name -> ipv4_address (empty string if none)
                     "restart": "no"
                 }
 
@@ -74,15 +74,22 @@ class App:
                 if cmd:
                     self.service_details["command"] = cmd
 
-                # Networks selection
+                # Networks selection (supports name or name=ipv4_address)
                 if available_networks:
                     print("Available networks:", ", ".join(available_networks))
-                print("Enter network names to attach this service to. Leave blank to finish.")
+                print("Enter network names to attach this service to. You can specify an IP with 'name=ipv4_address'. Leave blank to finish.")
                 while True:
-                    n = input("Network: ").strip()
+                    n = input("Network (or name=ip): ").strip()
                     if not n:
                         break
-                    self.service_details["networks"].append(n)
+                    if "=" in n:
+                        name, ip = n.split("=", 1)
+                        name = name.strip()
+                        ip = ip.strip()
+                        if name:
+                            self.service_details["networks"][name] = ip
+                    else:
+                        self.service_details["networks"][n] = ""
 
                 # Restart policy
                 restart = input("Restart policy (no, always, on-failure, unless-stopped) [no]: ").strip()
@@ -92,7 +99,18 @@ class App:
             def print_infos(self):
                 lines = [f"Service '{self.name}':"]
                 for k, v in self.service_details.items():
-                    lines.append(f"  {k}: {v}")
+                    if k == "networks":
+                        if not v:
+                            lines.append(f"  networks: []")
+                        else:
+                            lines.append("  networks:")
+                            for name, ip in v.items():
+                                if ip:
+                                    lines.append(f"    {name}: ipv4_address={ip}")
+                                else:
+                                    lines.append(f"    {name}")
+                    else:
+                        lines.append(f"  {k}: {v}")
                 return "\n".join(lines)
 
             def export_to_docker_format(self):
@@ -123,11 +141,23 @@ class App:
                 # command
                 if self.service_details.get("command"):
                     s += f"    command: \"{self.service_details['command']}\"\n"
-                # networks
-                if self.service_details.get("networks"):
-                    s += "    networks:\n"
-                    for n in self.service_details["networks"]:
-                        s += f"      - {n}\n"
+                # networks: support list or mapping with ipv4_address
+                nets = self.service_details.get("networks", {})
+                if nets:
+                    # if any network has an IP, export as mapping; otherwise export as list
+                    if any(ip for ip in nets.values()):
+                        s += "    networks:\n"
+                        for name, ip in nets.items():
+                            if ip:
+                                s += f"      {name}:\n"
+                                s += f"        ipv4_address: \"{ip}\"\n"
+                            else:
+                                # empty mapping for networks without specified IP
+                                s += f"      {name}: {{}}\n"
+                    else:
+                        s += "    networks:\n"
+                        for name in nets.keys():
+                            s += f"      - {name}\n"
                 # restart
                 if self.service_details.get("restart"):
                     s += f"    restart: {self.service_details['restart']}\n"
@@ -159,16 +189,15 @@ class App:
                 s = f"  {self.name}:\n"
                 if self.driver:
                     s += f"    driver: {self.driver}\n"
-                # Build ipam config only if we have subnet or gateway, to avoid stray newlines/empty keys
-                ipam_entries = []
-                if self.subnet:
-                    ipam_entries.append(f" subnet: {self.subnet}")
-                if self.gateway:
-                    ipam_entries.append(f"          gateway: {self.gateway}")
-                if ipam_entries:
-                    s += "    ipam:\n      config:\n        -"
-                    for entry in ipam_entries:
-                        s += f"{entry}\n"
+                # Build ipam config only if we have subnet or gateway
+                if self.subnet or self.gateway:
+                    s += "    ipam:\n"
+                    s += "      config:\n"
+                    s += "        -\n"
+                    if self.subnet:
+                        s += f"          subnet: {self.subnet}\n"
+                    if self.gateway:
+                        s += f"          gateway: {self.gateway}\n"
                 return s
 
         # expose inner classes
