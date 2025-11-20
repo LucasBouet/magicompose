@@ -56,6 +56,7 @@ class App:
                     "image": "auto",
                     "container_name": "",   # new: allow explicit container_name
                     "ports": [],
+                    "expose": [],           # new: container-only exposed ports
                     "volumes": [],
                     "environment": {},  # dict
                     "depends_on": [],
@@ -101,13 +102,37 @@ class App:
                         break
                     self.service_details["ports"].append(p)
 
-                # Volumes
-                app.p_info("Enter volume mappings (host_path:container_path). Leave blank to finish.")
+                # Expose (container-only ports)
+                app.p_info("Enter exposed ports (container-only, e.g. 8080). Leave blank to finish.")
                 while True:
-                    v = app.p_input("Volume mapping: ").strip()
-                    if not v:
+                    ex = app.p_input("Expose port: ").strip()
+                    if not ex:
                         break
-                    self.service_details["volumes"].append(v)
+                    self.service_details["expose"].append(ex)
+
+                # Volumes
+                app.p_info("Add volumes. Choose type 'bind' for host bind (HOST_PATH -> CONTAINER_PATH) or 'named' for named volume (VOLUME_NAME -> CONTAINER_PATH). Leave type blank to finish.")
+                while True:
+                    vol_type = app.p_input("Volume type (bind/named, leave blank to finish): ").strip().lower()
+                    if not vol_type:
+                        break
+                    if vol_type not in ("bind", "named"):
+                        app.p_warn("Invalid type. Use 'bind' or 'named'.")
+                        continue
+                    src = app.p_input("Host path (for bind) or volume name (for named): ").strip()
+                    if not src:
+                        app.p_warn("Source/name required. Skipping this entry.")
+                        continue
+                    tgt = app.p_input("Container path (e.g. /data): ").strip()
+                    if not tgt:
+                        app.p_warn("Container path required. Skipping this entry.")
+                        continue
+                    # store structured volume info
+                    self.service_details["volumes"].append({
+                        "type": vol_type,
+                        "source": src,
+                        "target": tgt
+                    })
 
                 # Environment variables
                 app.p_info("Enter environment variables as KEY=VALUE. Leave blank to finish.")
@@ -169,6 +194,17 @@ class App:
                                     lines.append(f"    {name}: ipv4_address={ip}")
                                 else:
                                     lines.append(f"    {name}")
+                    elif k == "volumes":
+                        if not v:
+                            lines.append("  volumes: []")
+                        else:
+                            lines.append("  volumes:")
+                            for vol in v:
+                                if isinstance(vol, dict):
+                                    lines.append(f"    - type={vol.get('type')} source={vol.get('source')} target={vol.get('target')}")
+                                else:
+                                    # fallback for legacy string entries
+                                    lines.append(f"    - {vol}")
                     else:
                         lines.append(f"  {k}: {v}")
                 return "\n".join(lines)
@@ -186,11 +222,23 @@ class App:
                     s += "    ports:\n"
                     for p in self.service_details["ports"]:
                         s += f"      - \"{p}\"\n"
-                # volumes
+                # expose
+                if self.service_details.get("expose"):
+                    s += "    expose:\n"
+                    for ex in self.service_details["expose"]:
+                        s += f"      - \"{ex}\"\n"
+                # volumes (service-level)
                 if self.service_details.get("volumes"):
                     s += "    volumes:\n"
-                    for v in self.service_details["volumes"]:
-                        s += f"      - \"{v}\"\n"
+                    for vol in self.service_details["volumes"]:
+                        # support structured dicts and legacy string entries
+                        if isinstance(vol, dict):
+                            src = vol.get("source")
+                            tgt = vol.get("target")
+                            # long syntax could be used for bind, but keep short syntax for readability
+                            s += f"      - \"{src}:{tgt}\"\n"
+                        else:
+                            s += f"      - \"{vol}\"\n"
                 # environment
                 if self.service_details.get("environment"):
                     s += "    environment:\n"
@@ -278,6 +326,16 @@ class App:
             out += "networks:\n"
             for net in self.networks:
                 out += net.export_to_docker_format()
+        # collect named volumes from services and add top-level volumes section
+        named_volumes = set()
+        for svc in self.services:
+            for vol in svc.service_details.get("volumes", []):
+                if isinstance(vol, dict) and vol.get("type") == "named":
+                    named_volumes.add(vol.get("source"))
+        if named_volumes:
+            out += "volumes:\n"
+            for name in sorted(named_volumes):
+                out += f"  {name}:\n"
         # Write to file
         try:
             self.file.write_text(out, encoding="utf-8")
