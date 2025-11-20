@@ -1,4 +1,8 @@
 from pathlib import Path
+from colorama import init as colorama_init, Fore, Style
+
+# initialize colorama (autoreset to avoid manual resets)
+colorama_init(autoreset=True)
 
 class App:
     def __init__(self):
@@ -10,6 +14,38 @@ class App:
         self.file = Path("./docker-compose.yml")
         self.services = []
         self.networks = []
+
+        # small helpers for colored output / prompts
+        def _color(text, color):
+            return f"{color}{text}{Style.RESET_ALL}"
+
+        self._color = _color
+        self.prompt_color = Fore.CYAN
+        self.info_color = Fore.GREEN
+        self.warn_color = Fore.YELLOW
+        self.err_color = Fore.RED
+        self.accent_color = Fore.MAGENTA
+
+        def p_input(prompt_text):
+            return input(self._color(prompt_text, self.prompt_color))
+
+        def p_info(text):
+            print(self._color(text, self.info_color))
+
+        def p_warn(text):
+            print(self._color(text, self.warn_color))
+
+        def p_err(text):
+            print(self._color(text, self.err_color))
+
+        def p_accent(text):
+            print(self._color(text, self.accent_color))
+
+        self.p_input = p_input
+        self.p_info = p_info
+        self.p_warn = p_warn
+        self.p_err = p_err
+        self.p_accent = p_accent
 
         # Service class for service configuration/export
         class Service:
@@ -27,21 +63,25 @@ class App:
                     "networks": {},  # dict: network_name -> ipv4_address (empty string if none)
                     "restart": "no"
                 }
+                # app reference will be injected by App when created (svc.app = self_app)
+                self.app = None
 
             def configure_interactive(self, available_networks=None):
                 available_networks = available_networks or []
-                image = input(f"Image for '{self.name}' (default '{self.service_details['image']}'): ").strip()
+                app = self.app  # local shortcut; required for colored I/O
+
+                image = app.p_input(f"Image for '{self.name}' (default '{self.service_details['image']}'): ").strip()
                 if image:
                     self.service_details["image"] = image
 
                 # new: custom container name
-                cname = input("Container name (leave blank to skip): ").strip()
+                cname = app.p_input("Container name (leave blank to skip): ").strip()
                 if cname:
                     self.service_details["container_name"] = cname
 
                 # If image appears to be MySQL, offer quick MySQL env setup
                 if "mysql" in self.service_details["image"].lower():
-                    print("Detected MySQL image. Optionally set MySQL environment variables (leave blank to skip each).")
+                    app.p_accent("Detected MySQL image. Optionally set MySQL environment variables (leave blank to skip each).")
                     mysql_defaults = {
                         "MYSQL_ROOT_PASSWORD": "rootpassword",
                         "MYSQL_DATABASE": "demo",
@@ -49,57 +89,57 @@ class App:
                         "MYSQL_PASSWORD": "password"
                     }
                     for k, suggested in mysql_defaults.items():
-                        v = input(f"{k} (suggested '{suggested}'): ").strip()
+                        v = app.p_input(f"{k} (suggested '{suggested}'): ").strip()
                         if v:
                             self.service_details["environment"][k] = v
 
                 # Ports
-                print("Enter port mappings (host:container). Leave blank to finish.")
+                app.p_info("Enter port mappings (host:container). Leave blank to finish.")
                 while True:
-                    p = input("Port mapping: ").strip()
+                    p = app.p_input("Port mapping: ").strip()
                     if not p:
                         break
                     self.service_details["ports"].append(p)
 
                 # Volumes
-                print("Enter volume mappings (host_path:container_path). Leave blank to finish.")
+                app.p_info("Enter volume mappings (host_path:container_path). Leave blank to finish.")
                 while True:
-                    v = input("Volume mapping: ").strip()
+                    v = app.p_input("Volume mapping: ").strip()
                     if not v:
                         break
                     self.service_details["volumes"].append(v)
 
                 # Environment variables
-                print("Enter environment variables as KEY=VALUE. Leave blank to finish.")
+                app.p_info("Enter environment variables as KEY=VALUE. Leave blank to finish.")
                 while True:
-                    e = input("Env: ").strip()
+                    e = app.p_input("Env: ").strip()
                     if not e:
                         break
                     if "=" in e:
                         k, v = e.split("=", 1)
                         self.service_details["environment"][k.strip()] = v.strip()
                     else:
-                        print("Invalid format. Use KEY=VALUE.")
+                        app.p_warn("Invalid format. Use KEY=VALUE.")
 
                 # depends_on
-                print("Enter dependent service names. Leave blank to finish.")
+                app.p_info("Enter dependent service names. Leave blank to finish.")
                 while True:
-                    d = input("Depends on service: ").strip()
+                    d = app.p_input("Depends on service: ").strip()
                     if not d:
                         break
                     self.service_details["depends_on"].append(d)
 
                 # Command
-                cmd = input("Command to run (leave blank to skip): ").strip()
+                cmd = app.p_input("Command to run (leave blank to skip): ").strip()
                 if cmd:
                     self.service_details["command"] = cmd
 
                 # Networks selection (supports name or name=ipv4_address)
                 if available_networks:
-                    print("Available networks:", ", ".join(available_networks))
-                print("Enter network names to attach this service to. You can specify an IP with 'name=ipv4_address'. Leave blank to finish.")
+                    app.p_accent("Available networks: " + ", ".join(available_networks))
+                app.p_info("Enter network names to attach this service to. You can specify an IP with 'name=ipv4_address'. Leave blank to finish.")
                 while True:
-                    n = input("Network (or name=ip): ").strip()
+                    n = app.p_input("Network (or name=ip): ").strip()
                     if not n:
                         break
                     if "=" in n:
@@ -112,7 +152,7 @@ class App:
                         self.service_details["networks"][n] = ""
 
                 # Restart policy
-                restart = input("Restart policy (no, always, on-failure, unless-stopped) [no]: ").strip()
+                restart = app.p_input("Restart policy (no, always, on-failure, unless-stopped) [no]: ").strip()
                 if restart:
                     self.service_details["restart"] = restart
 
@@ -193,15 +233,17 @@ class App:
                 self.driver = "bridge"
                 self.subnet = ""
                 self.gateway = ""
+                self.app = None  # will be injected
 
             def configure_interactive(self):
-                drv = input(f"Driver for network '{self.name}' (default '{self.driver}'): ").strip()
+                app = self.app
+                drv = app.p_input(f"Driver for network '{self.name}' (default '{self.driver}'): ").strip()
                 if drv:
                     self.driver = drv
-                sn = input("Subnet (CIDR) (leave blank to skip): ").strip()
+                sn = app.p_input("Subnet (CIDR) (leave blank to skip): ").strip()
                 if sn:
                     self.subnet = sn
-                gw = input("Gateway (leave blank to skip): ").strip()
+                gw = app.p_input("Gateway (leave blank to skip): ").strip()
                 if gw:
                     self.gateway = gw
 
@@ -239,49 +281,52 @@ class App:
         # Write to file
         try:
             self.file.write_text(out, encoding="utf-8")
-            print(f"docker-compose file written to {self.file.resolve()}")
+            self.p_info(f"docker-compose file written to {self.file.resolve()}")
         except Exception as e:
-            print("Error writing file:", e)
+            self.p_err(f"Error writing file: {e}")
 
     def loop(self):
-        print(f"Welcome to {self.name} v{self.version}!")
+        self.p_accent(f"Welcome to {self.name} v{self.version}!")
         while True:
-            command = input("Enter command (add_service, show_services, add_network, show_networks, export, exit): ").strip()
+            command = self.p_input("Enter command (add_service, show_services, add_network, show_networks, export, exit): ").strip()
             if command == "add_service":
-                service_name = input("Enter service name: ").strip()
+                service_name = self.p_input("Enter service name: ").strip()
                 if not service_name:
-                    print("Service name required.")
+                    self.p_warn("Service name required.")
                     continue
                 svc = self.Service(self.file, service_name)
+                # inject app reference so Service can use colored I/O
+                svc.app = self
                 svc.configure_interactive(available_networks=[n.name for n in self.networks])
                 self.services.append(svc)
-                print(f"Service '{service_name}' added.")
+                self.p_info(f"Service '{service_name}' added.")
             elif command == "show_services":
                 if not self.services:
-                    print("No services defined.")
+                    self.p_warn("No services defined.")
                 for svc in self.services:
-                    print(svc.print_infos())
+                    print(self._color(svc.print_infos(), Fore.WHITE))
             elif command == "add_network":
-                net_name = input("Enter network name: ").strip()
+                net_name = self.p_input("Enter network name: ").strip()
                 if not net_name:
-                    print("Network name required.")
+                    self.p_warn("Network name required.")
                     continue
                 net = self.Network(net_name)
+                net.app = self
                 net.configure_interactive()
                 self.networks.append(net)
-                print(f"Network '{net_name}' added.")
+                self.p_info(f"Network '{net_name}' added.")
             elif command == "show_networks":
                 if not self.networks:
-                    print("No networks defined.")
+                    self.p_warn("No networks defined.")
                 for net in self.networks:
-                    print(net.print_infos())
+                    print(self._color(net.print_infos(), Fore.WHITE))
             elif command == "export":
                 self.export_compose()
             elif command == "exit":
-                print("Exiting MagicomPose.")
+                self.p_info("Exiting MagicomPose.")
                 break
             else:
-                print("Unknown command. Please try again.")
+                self.p_warn("Unknown command. Please try again.")
 
 if __name__ == "__main__":
     app = App()
