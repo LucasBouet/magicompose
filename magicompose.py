@@ -6,8 +6,8 @@ colorama_init(autoreset=True)
 
 class App:
     def __init__(self, path=None):
-        self.name = "MagicomPose"
-        self.version = "1.0.0"
+        self.name = "MagiCompose"
+        self.version = "1.5.6"
         self.author = "Your Name"
         self.description = "An application for magical docker compose creation cli-like."
         self.license = "MIT"
@@ -346,8 +346,8 @@ class App:
     def loop(self):
         self.p_accent(f"Welcome to {self.name} v{self.version}!")
         while True:
-            command = self.p_input("Enter command (add_service, show_services, add_network, show_networks, export, exit): ").strip()
-            if command == "add_service":
+            command = self.p_input("Enter command (add service, show services, add network, show networks, export, exit): ").strip()
+            if command == "add_service" or command == "add service" or command == "as":
                 service_name = self.p_input("Enter service name: ").strip()
                 if not service_name:
                     self.p_warn("Service name required.")
@@ -358,12 +358,12 @@ class App:
                 svc.configure_interactive(available_networks=[n.name for n in self.networks])
                 self.services.append(svc)
                 self.p_info(f"Service '{service_name}' added.")
-            elif command == "show_services":
+            elif command == "show_services" or command == "show services" or command == "ss":
                 if not self.services:
                     self.p_warn("No services defined.")
                 for svc in self.services:
                     print(self._color(svc.print_infos(), Fore.WHITE))
-            elif command == "add_network":
+            elif command == "add_network" or command == "add network" or command == "an":
                 net_name = self.p_input("Enter network name: ").strip()
                 if not net_name:
                     self.p_warn("Network name required.")
@@ -373,7 +373,7 @@ class App:
                 net.configure_interactive()
                 self.networks.append(net)
                 self.p_info(f"Network '{net_name}' added.")
-            elif command == "show_networks":
+            elif command == "show_networks" or command == "show networks" or command == "sn":
                 if not self.networks:
                     self.p_warn("No networks defined.")
                 for net in self.networks:
