@@ -159,12 +159,16 @@ class App:
                 s = f"  {self.name}:\n"
                 if self.driver:
                     s += f"    driver: {self.driver}\n"
-                if self.subnet or self.gateway:
-                    s += "    ipam:\n      config:\n        -\n"
-                    if self.subnet:
-                        s += f"          subnet: {self.subnet}\n"
-                    if self.gateway:
-                        s += f"          gateway: {self.gateway}\n"
+                # Build ipam config only if we have subnet or gateway, to avoid stray newlines/empty keys
+                ipam_entries = []
+                if self.subnet:
+                    ipam_entries.append(f" subnet: {self.subnet}")
+                if self.gateway:
+                    ipam_entries.append(f"          gateway: {self.gateway}")
+                if ipam_entries:
+                    s += "    ipam:\n      config:\n        -"
+                    for entry in ipam_entries:
+                        s += f"{entry}\n"
                 return s
 
         # expose inner classes
