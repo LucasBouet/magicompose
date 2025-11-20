@@ -5,13 +5,13 @@ from colorama import init as colorama_init, Fore, Style
 colorama_init(autoreset=True)
 
 class App:
-    def __init__(self):
+    def __init__(self, path=None):
         self.name = "MagicomPose"
         self.version = "1.0.0"
         self.author = "Your Name"
         self.description = "An application for magical docker compose creation cli-like."
         self.license = "MIT"
-        self.file = Path("./docker-compose.yml")
+        self.file = Path(path)
         self.services = []
         self.networks = []
 
@@ -329,5 +329,6 @@ class App:
                 self.p_warn("Unknown command. Please try again.")
 
 if __name__ == "__main__":
-    app = App()
+    current_path = str(Path.cwd()) + "/docker-compose.yml"
+    app = App(path=current_path)
     app.loop()
