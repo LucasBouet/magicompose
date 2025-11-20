@@ -1,5 +1,6 @@
 from pathlib import Path
 from colorama import init as colorama_init, Fore, Style
+import os
 
 # initialize colorama (autoreset to avoid manual resets)
 colorama_init(autoreset=True)
@@ -280,7 +281,6 @@ class App:
                 self.name = name
                 self.driver = "bridge"
                 self.subnet = ""
-                self.gateway = ""
                 self.app = None  # will be injected
 
             def configure_interactive(self):
@@ -291,26 +291,20 @@ class App:
                 sn = app.p_input("Subnet (CIDR) (leave blank to skip): ").strip()
                 if sn:
                     self.subnet = sn
-                gw = app.p_input("Gateway (leave blank to skip): ").strip()
-                if gw:
-                    self.gateway = gw
 
             def print_infos(self):
-                return f"Network '{self.name}': driver={self.driver}, subnet={self.subnet}, gateway={self.gateway}"
+                return f"Network '{self.name}': driver={self.driver}, subnet={self.subnet}"
 
             def export_to_docker_format(self):
                 s = f"  {self.name}:\n"
                 if self.driver:
                     s += f"    driver: {self.driver}\n"
                 # Build ipam config only if we have subnet or gateway
-                if self.subnet or self.gateway:
+                if self.subnet:
                     s += "    ipam:\n"
                     s += "      config:\n"
                     s += "        -\n"
-                    if self.subnet:
-                        s += f"          subnet: {self.subnet}\n"
-                    if self.gateway:
-                        s += f"          gateway: {self.gateway}\n"
+                    s += f"          subnet: {self.subnet}\n"
                 return s
 
         # expose inner classes
@@ -343,10 +337,95 @@ class App:
         except Exception as e:
             self.p_err(f"Error writing file: {e}")
 
+    def clear(self):
+        """Clear the terminal screen (Linux/Unix)."""
+        try:
+            os.system("clear")
+        except Exception:
+            # fallback to ANSI clear
+            print("\033c", end="")
+
+    # helpers to find existing service/network by name
+    def get_service(self, name: str):
+        for svc in self.services:
+            if svc.name == name:
+                return svc
+        return None
+
+    def get_network(self, name: str):
+        for net in self.networks:
+            if net.name == name:
+                return net
+        return None
+
     def loop(self):
         self.p_accent(f"Welcome to {self.name} v{self.version}!")
         while True:
-            command = self.p_input("Enter command (add service, show services, add network, show networks, export, exit): ").strip()
+            command = self.p_input("Enter command (add service, show services, add network, show networks, edit service <name>, edit network <name>, clear, export, exit): ").strip()
+            if not command:
+                continue
+            tokens = command.split()
+
+            # clear screen
+            if command in ("clear", "c"):
+                self.clear()
+                continue
+
+            # Edit service: formats supported
+            #   edit service <name>
+            #   edit_service <name>
+            #   es <name>
+            if (tokens[0] in ("edit_service", "edit-service", "es")) or (tokens[0] == "edit" and len(tokens) > 1 and tokens[1] == "service"):
+                # determine service name position
+                if tokens[0] in ("edit_service", "edit-service", "es"):
+                    svc_name = tokens[1] if len(tokens) > 1 else ""
+                else:
+                    svc_name = tokens[2] if len(tokens) > 2 else ""
+                if not svc_name:
+                    self.p_warn("Service name required. Usage: edit service <name> | edit_service <name> | es <name>")
+                    continue
+                svc = self.get_service(svc_name)
+                if not svc:
+                    self.p_warn(f"Service '{svc_name}' not found.")
+                    continue
+                # show current config and confirm
+                print(self._color(svc.print_infos(), Fore.WHITE))
+                ans = self.p_input("Edit this service? [y/N]: ").strip().lower()
+                if ans != "y":
+                    self.p_info("Edit cancelled.")
+                    continue
+                # run interactive configure again (it will use current values as defaults)
+                svc.configure_interactive(available_networks=[n.name for n in self.networks])
+                self.p_info(f"Service '{svc_name}' updated.")
+                continue
+
+            # Edit network: formats supported
+            #   edit network <name>
+            #   edit_network <name>
+            #   en <name>
+            if (tokens[0] in ("edit_network", "edit-network", "en")) or (tokens[0] == "edit" and len(tokens) > 1 and tokens[1] == "network"):
+                if tokens[0] in ("edit_network", "edit-network", "en"):
+                    net_name = tokens[1] if len(tokens) > 1 else ""
+                else:
+                    net_name = tokens[2] if len(tokens) > 2 else ""
+                if not net_name:
+                    self.p_warn("Network name required. Usage: edit network <name> | edit_network <name> | en <name>")
+                    continue
+                net = self.get_network(net_name)
+                if not net:
+                    self.p_warn(f"Network '{net_name}' not found.")
+                    continue
+                print(self._color(net.print_infos(), Fore.WHITE))
+                ans = self.p_input("Edit this network? [y/N]: ").strip().lower()
+                if ans != "y":
+                    self.p_info("Edit cancelled.")
+                    continue
+                net.configure_interactive()
+                self.p_info(f"Network '{net_name}' updated.")
+                continue
+
+            # fallback to existing command parsing
+            # keep supporting original command names
             if command == "add_service" or command == "add service" or command == "as":
                 service_name = self.p_input("Enter service name: ").strip()
                 if not service_name:
