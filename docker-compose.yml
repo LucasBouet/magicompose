@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  php:
+    image: auto
+    ports:
+      - "80:9001"
+    volumes:
+      - "./website:/var/www/html/website"
+    command: "php -S 127.0.0.1:9001"
+    networks:
+      - website
+    restart: always
